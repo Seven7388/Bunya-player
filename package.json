@@ -1,0 +1,23 @@
+﻿{
+  "name": "bunya-player",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start"
+  },
+  "dependencies": {
+    "next": "14.2.5",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "hls.js": "^1.5.7"
+  },
+  "devDependencies": {
+    "@types/node": "20.11.30",
+    "@types/react": "18.3.2",
+    "typescript": "5.4.5",
+    "tailwindcss": "3.4.1",
+    "postcss": "8.4.33",
+    "autoprefixer": "10.4.18"
+  }
+}
