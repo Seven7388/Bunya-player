@@ -1,68 +1,85 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-type Ch={name:string;group:string;url:string;kid?:string;key?:string};
-const PLAYLIST="https://raw.githubusercontent.com/azamstv00-cpu/Public_Iptv_Channels/main/playlist.m3u8";
-const TZ:Ch[]=[
- {name:"TBC1",group:"Tanzania",url:"https://tbc1.cdn.netplus.co.tz/live/tbc1/playlist.m3u8"},
- {name:"ITV",group:"Tanzania",url:"https://itv.cdn.netplus.co.tz/live/itv/playlist.m3u8"},
- {name:"Clouds TV",group:"Tanzania",url:"https://clouds.cdn.netplus.co.tz/live/clouds/playlist.m3u8"},
+
+type Ch = { name:string; group:string; url:string; kid?:string; key?:string; logo?:string };
+
+// YOUR LAST 8 CHANNELS ONLY - these work
+const CHANNELS: Ch[] = [
+  { name:"Dodoma TV (360p)", group:"General", url:"https://goliveafrica.media:9998/live/625965017ed69/index.m3u8" },
+  { name:"IBN TV (480p)", group:"Religious", url:"http://138.68.138.119:8080/live/5a8993709ea19/index.m3u8" },
+  { name:"IBN TV Africa (720p)", group:"Religious", url:"http://68.183.41.209:8080/live/5d9a537c64b9c/index.m3u8" },
+  { name:"Mahaasin TV", group:"Religious", url:"https://mahaasintv.livebox.co.in/mahaasintvhls/mahaasintv.m3u8" },
+  { name:"Tanzania Safari Channel (576p)", group:"Travel", url:"https://stream-134630.castr.net/5fe35eae8c53540cab83659a/live_31dabe40323511f08b8efff0016f3b67/index.m3u8" },
+  { name:"TBC1", group:"General", url:"https://tbc.maintek.co/LiveApp/streams/YF43nTzH0duMyUA2130641323343587.m3u8" },
+  { name:"TBC1 (1080p)", group:"General", url:"https://stream-134630.castr.net/5fe35eae8c53540cab83659a/live_67aeec90584911f1ab60174d68f7c06e/index.fmp4.m3u8" },
+  { name:"TBC2 (1080p)", group:"Entertainment", url:"https://stream-134630.castr.net/5fe35eae8c53540cab83659a/live_17ad3c50323511f08f79733d2dd68583/index.fmp4.m3u8" },
 ];
 
 export default function Page(){
- const vRef=useRef<HTMLVideoElement>(null);
- const hlsRef=useRef<any>(null); const shakaRef=useRef<any>(null);
- const [all,setAll]=useState<Ch[]>([]); const [search,setSearch]=useState("");
- const [cur,setCur]=useState<Ch|null>(null); const [quals,setQuals]=useState<any[]>([]);
- const [qId,setQId]=useState(-1); const [showQ,setShowQ]=useState(false);
+  const vRef=useRef<HTMLVideoElement>(null);
+  const hlsRef=useRef<any>(null); const shakaRef=useRef<any>(null);
+  const [cur,setCur]=useState<Ch>(CHANNELS[0]);
+  const [search,setSearch]=useState("");
+  const [quals,setQuals]=useState<{id:number,label:string}[]>([]);
+  const [qId,setQId]=useState(-1);
+  const [status,setStatus]=useState("Tap a channel");
 
- useEffect(()=>{
-  fetch(PLAYLIST).then(r=>r.text()).then(t=>{
-   const L=t.split("\n"); const list:Ch[]=[]; let tmp:any={};
-   for(const line of L){const l=line.trim();
-    if(l.startsWith("#EXTINF")){const name=(l.split(",").pop()||"").trim(); const g=(l.match(/group-title="([^"]+)"/)||[])[1]||"Other"; tmp={name,group:g};}
-    else if(l.startsWith("http")&&tmp.name){list.push({...tmp,url:l}); tmp={};}
-   }
-   const m=[...TZ,...list]; setAll(m); setCur(m[0]);
-  });
- },[]);
+  useEffect(()=>{
+    if(!vRef.current) return;
+    const video=vRef.current;
+    setQuals([]); setQId(-1); setStatus("Loading "+cur.name+"...");
+    (async()=>{
+      if(hlsRef.current){try{hlsRef.current.destroy();}catch{} hlsRef.current=null;}
+      if(shakaRef.current){try{await shakaRef.current.destroy();}catch{} shakaRef.current=null;}
+      try{
+        if(cur.url.includes(".mpd")){
+          const shaka=(await import("shaka-player")).default; shaka.polyfill.installAll();
+          const p=new shaka.Player(video); shakaRef.current=p;
+          if(cur.kid&&cur.key) p.configure({drm:{clearKeys:{[cur.kid]:cur.key}}});
+          await p.load(cur.url); setStatus("▶ Playing: "+cur.name);
+          const tracks=p.getVariantTracks().sort((a:any,b:any)=>a.height-b.height);
+          setQuals([{id:-1,label:"Auto"},...tracks.map((t:any)=>({id:t.id,label:(t.height||0)+"p"}))]);
+        }else{
+          const Hls=(await import("hls.js")).default;
+          if(Hls.isSupported()){
+            const h=new Hls(); hlsRef.current=h;
+            h.loadSource(cur.url); h.attachMedia(video);
+            h.on(Hls.Events.MANIFEST_PARSED,()=>{
+              video.play().catch(()=>{});
+              const lv=h.levels.map((l:any,i:number)=>({id:i,label:(l.height?l.height+"p":Math.round(l.bitrate/1000)+"k")}));
+              setQuals([{id:-1,label:"Auto"},...lv]); setStatus("▶ Playing: "+cur.name);
+            });
+            h.on(Hls.Events.ERROR,(_:any,d:any)=>{ if(d.fatal) setStatus("Stream failed - try another"); });
+          }else{ video.src=cur.url; await video.play(); setStatus("▶ Playing: "+cur.name); }
+        }
+      }catch(e:any){ setStatus("Error: "+(e.message||"Cannot play")); }
+    })();
+  },[cur]);
 
- useEffect(()=>{
-  if(!cur||!vRef.current) return; setQuals([]);
-  (async()=>{
-   const video=vRef.current!;
-   if(cur.url.includes(".mpd")){
-    const shaka=(await import("shaka-player")).default; shaka.polyfill.installAll();
-    const p=new shaka.Player(video); shakaRef.current=p;
-    await p.load(cur.url);
-    const tr=p.getVariantTracks().sort((a:any,b:any)=>a.height-b.height);
-    const uniq=Array.from(new Map(tr.map((x:any)=>[x.height,x])).values()) as any[];
-    setQuals([{id:-1,label:"Auto",h:0},...uniq.map((x:any)=>({id:x.id,label:x.height+"p",h:x.height}))]);
-   }else{
-    const Hls=(await import("hls.js")).default;
-    if(Hls.isSupported()){const h=new Hls(); hlsRef.current=h; h.loadSource(cur.url); h.attachMedia(video);
-     h.on(Hls.Events.MANIFEST_PARSED,()=>{const lv=h.levels.map((l:any,i:number)=>({id:i,label:(l.height||0)+"p",h:l.height})).sort((a:any,b:any)=>a.h-b.h); setQuals([{id:-1,label:"Auto",h:0},...lv]);});
-    } else video.src=cur.url;
-   }
-  })();
- },[cur]);
-
- const setQuality=(q:any)=>{setQId(q.id); setShowQ(false); if(hlsRef.current)hlsRef.current.currentLevel=q.id; if(shakaRef.current){if(q.id===-1)shakaRef.current.configure({abr:{enabled:true}}); else{shakaRef.current.configure({abr:{enabled:false}}); const t=shakaRef.current.getVariantTracks().find((x:any)=>x.height===q.h); if(t)shakaRef.current.selectVariantTrack(t,true);}}};
-
- const groups=Array.from(new Set(all.map(c=>c.group)));
- const filtered=all.filter(c=>c.name.toLowerCase().includes(search.toLowerCase()));
-
- return(
-  <div className="min-h-screen bg-black text-white p-2">
-   <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search channel..." className="w-full p-2 mb-2 rounded bg-zinc-900 border border-zinc-700"/>
-   <div className="relative w-full aspect-video bg-black rounded overflow-hidden">
-    <video ref={vRef} controls autoPlay className="w-full h-full"/>
-    {quals.length>1&&<div className="absolute top-2 right-2">
-     <button onClick={()=>setShowQ(!showQ)} className="bg-black/80 px-3 py-1 rounded text-xs border">⚙️ {qId===-1?"Auto":quals.find(x=>x.id===qId)?.label}</button>
-     {showQ&&<div className="mt-1 bg-zinc-900 border rounded overflow-hidden">{quals.map((q:any)=><button key={q.id+q.label} onClick={()=>setQuality(q)} className="block w-full text-left px-3 py-2 text-xs hover:bg-white hover:text-black">{q.label}</button>)}</div>}
-    </div>}
-   </div>
-   <div className="flex gap-2 overflow-x-auto mt-2 pb-2">{groups.map(g=><span key={g} className="px-2 py-1 bg-zinc-800 rounded-full text-[11px] whitespace-nowrap">{g}</span>)}</div>
-   <div className="grid gap-1 mt-2">{filtered.map(c=><button key={c.url} onClick={()=>setCur(c)} className={`text-left p-3 rounded border text-sm flex justify-between ${cur?.url===c.url?"bg-white text-black":"bg-zinc-900 border-zinc-800"}`}><span>{c.name}</span><span className="text-[10px] opacity-60">{c.group}</span></button>)}</div>
-  </div>
- )
+  const changeQ=(id:number)=>{
+    setQId(id);
+    if(hlsRef.current) hlsRef.current.currentLevel=id;
+    if(shakaRef.current){
+      if(id===-1) shakaRef.current.configure({abr:{enabled:true}});
+      else{ const tr=shakaRef.current.getVariantTracks()[id]; if(tr){ shakaRef.current.configure({abr:{enabled:false}}); shakaRef.current.selectVariantTrack(tr,true);} }
     }
+  };
+
+  const filtered=CHANNELS.filter(c=>c.name.toLowerCase().includes(search.toLowerCase()));
+
+  return(
+    <div style={{background:"#000",color:"#fff",minHeight:"100vh",fontFamily:"system-ui"}}>
+      <div style={{padding:12,position:"sticky",top:0,background:"#000",borderBottom:"1px solid #222",zIndex:10}}>
+        <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search channel..." style={{width:"100%",padding:"10px 14px",borderRadius:10,background:"#111",border:"1px solid #333",color:"#fff"}}/>
+        <div style={{marginTop:10,position:"relative",background:"#000",borderRadius:12,overflow:"hidden"}}>
+          <video ref={vRef} controls autoPlay playsInline style={{width:"100%",aspectRatio:"16/9",background:"#000"}}/>
+          {quals.length>1&&<select value={qId} onChange={e=>changeQ(parseInt(e.target.value))} style={{position:"absolute",top:8,right:8,background:"rgba(0,0,0,0.8)",color:"#fff",border:"1px solid #444",borderRadius:6,padding:"5px"}}>{quals.map(q=><option key={q.id} value={q.id}>{q.label}</option>)}</select>}
+        </div>
+        <div style={{fontSize:12,color:"#888",marginTop:6}}>{status}</div>
+      </div>
+      <div style={{padding:10,display:"flex",flexDirection:"column",gap:8}}>
+        {filtered.map(c=><button key={c.url} onClick={()=>setCur(c)} style={{textAlign:"left",padding:"14px",borderRadius:12,border:"1px solid #222",background:c.url===cur.url?"#fff":"#111",color:c.url===cur.url?"#000":"#fff",display:"flex",justifyContent:"space-between"}}><span>{c.name}</span><span style={{fontSize:10,background:c.url===cur.url?"#000":"#222",color:c.url===cur.url?"#fff":"#999",padding:"3px 8px",borderRadius:20}}>{c.group}</span></button>)}
+      </div>
+    </div>
+  );
+   }
