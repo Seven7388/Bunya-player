@@ -4,7 +4,6 @@ type Ch = { name: string; group: string; logo: string; url: string; kid?: string
 
 const PLAYLIST = "https://raw.githubusercontent.com/azamstv00-cpu/Public_Iptv_Channels/main/playlist.m3u8";
 
-// Working Tanzania list (added to that playlist)
 const TZ: Ch[] = [
   { name: "TBC1 Tanzania", group: "Tanzania", logo: "", url: "https://tbc1.cdn.netplus.co.tz/live/tbc1/playlist.m3u8" },
   { name: "ITV Tanzania", group: "Tanzania", logo: "", url: "https://itv.cdn.netplus.co.tz/live/itv/playlist.m3u8" },
@@ -31,7 +30,7 @@ export default function Page(){
         else if(l.includes("drmLicense=")){ const m=l.match(/drmLicense=([^:]+):([^&]+)/); if(m){ tmp.kid=m[1]; tmp.key=m[2]; } }
         else if(l.startsWith("http")){ if(tmp.name){ list.push({...tmp, url:l }); tmp={}; } }
       }
-      const merged=[...TZ,...list]; // Tanzania first
+      const merged=[...TZ,...list];
       setAll(merged); setCur(merged[0]); setStatus(`Loaded ${merged.length} channels`);
     });
   },[]);
@@ -57,7 +56,7 @@ export default function Page(){
   },[cur]);
 
   const filtered=all.filter(c=>c.name.toLowerCase().includes(search.toLowerCase())||c.group.toLowerCase().includes(search.toLowerCase()));
-  const groups=[...new Set(all.map(c=>c.group))];
+  const groups=Array.from(new Set(all.map(c=>c.group)));
 
   return(
     <div className="min-h-screen bg-black text-white">
@@ -71,4 +70,4 @@ export default function Page(){
       <div className="grid grid-cols-1 gap-1 p-2">{filtered.map(c=><button key={c.url+c.name} onClick={()=>setCur(c)} className={`p-3 rounded flex justify-between text-left ${cur?.url===c.url?"bg-white text-black":"bg-zinc-900"}`}><span className="truncate">{c.name}</span><span className="text-xs opacity-60">{c.group}</span></button>)}</div>
     </div>
   )
-      }
+            }
