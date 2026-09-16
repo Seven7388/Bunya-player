@@ -1,74 +1,74 @@
-﻿'use client'
-import { useEffect, useRef, useState } from 'react'
-import Hls from 'hls.js'
+"use client";
+import { useEffect, useRef, useState } from "react";
+type Ch = { name: string; group: string; logo: string; url: string; kid?: string; key?: string; };
 
-const PLAYLIST_URL = 'https://raw.githubusercontent.com/Seven7388/bunya-stream/main/index.m3u'
-// If you have streams.m3u use that instead
+const PLAYLIST = "https://raw.githubusercontent.com/azamstv00-cpu/Public_Iptv_Channels/main/playlist.m3u8";
+
+// Working Tanzania list (added to that playlist)
+const TZ: Ch[] = [
+  { name: "TBC1 Tanzania", group: "Tanzania", logo: "", url: "https://tbc1.cdn.netplus.co.tz/live/tbc1/playlist.m3u8" },
+  { name: "ITV Tanzania", group: "Tanzania", logo: "", url: "https://itv.cdn.netplus.co.tz/live/itv/playlist.m3u8" },
+  { name: "Clouds TV", group: "Tanzania", logo: "", url: "https://clouds.cdn.netplus.co.tz/live/clouds/playlist.m3u8" },
+  { name: "Wasafi TV", group: "Tanzania", logo: "", url: "https://wasafitv.cdn.netplus.co.tz/live/wasafitv/playlist.m3u8" },
+];
 
 export default function Page(){
-  const videoRef = useRef<HTMLVideoElement>(null)
-  const [channels, setChannels] = useState<any[]>([])
-  const [playing, setPlaying] = useState<any>(null)
-  const [search, setSearch] = useState('')
+  const vRef=useRef<HTMLVideoElement>(null);
+  const [all,setAll]=useState<Ch[]>([]);
+  const [search,setSearch]=useState("");
+  const [cur,setCur]=useState<Ch|null>(null);
+  const [status,setStatus]=useState("Loading playlist.m3u8...");
 
   useEffect(()=>{
-    fetch(PLAYLIST_URL).then(r=>r.text()).then(text=>{
-      const lines = text.split('\n')
-      const parsed:any[] = []
-      let current:any = {}
-      lines.forEach(line=>{
-        if(line.startsWith('#EXTINF')){
-          const name = line.split(',')[1] || 'Unknown'
-          const logoMatch = line.match(/tvg-logo="([^"]+)"/)
-          const groupMatch = line.match(/group-title="([^"]+)"/)
-          current = { name, logo: logoMatch?.[1] || '', group: groupMatch?.[1] || 'General' }
-        } else if(line.startsWith('http')){
-          current.url = line.trim()
-          parsed.push({...current})
-        }
-      })
-      setChannels(parsed)
-    })
-  },[])
+    fetch(PLAYLIST).then(r=>r.text()).then(txt=>{
+      const lines=txt.split("\n");
+      const list: Ch[]=[]; let tmp:any={};
+      for(const line of lines){
+        const l=line.trim();
+        if(l.startsWith("#EXTINF")){
+          tmp={ name:l.split(",").pop(), group:(l.match(/group-title="([^"]+)"/)||[])[1]||"Other", logo:(l.match(/tvg-logo="([^"]+)"/)||[])[1]||"" };
+        } else if(l.includes("license_key=")){ const [kid,key]=l.split("license_key=")[1].split(":"); tmp.kid=kid; tmp.key=key; }
+        else if(l.includes("drmLicense=")){ const m=l.match(/drmLicense=([^:]+):([^&]+)/); if(m){ tmp.kid=m[1]; tmp.key=m[2]; } }
+        else if(l.startsWith("http")){ if(tmp.name){ list.push({...tmp, url:l }); tmp={}; } }
+      }
+      const merged=[...TZ,...list]; // Tanzania first
+      setAll(merged); setCur(merged[0]); setStatus(`Loaded ${merged.length} channels`);
+    });
+  },[]);
 
-  const play = (ch:any)=>{
-    setPlaying(ch)
-    if(!videoRef.current) return
-    if(Hls.isSupported()){
-      const hls = new Hls()
-      hls.loadSource(ch.url)
-      hls.attachMedia(videoRef.current)
-    } else {
-      videoRef.current.src = ch.url
-    }
-    videoRef.current.play().catch(()=>{})
-  }
+  useEffect(()=>{
+    if(!cur||!vRef.current) return;
+    let p:any,h:any;
+    (async()=>{
+      const video=vRef.current!;
+      const shaka=(await import("shaka-player")).default;
+      shaka.polyfill.installAll();
+      if(cur.url.includes(".mpd")){
+        p=new shaka.Player(video);
+        if(cur.kid&&cur.key) p.configure({drm:{clearKeys:{[cur.kid]:cur.key}}});
+        try{ await p.load(cur.url); setStatus("Playing: "+cur.name);}catch(e:any){ setStatus("Error: "+e.message); }
+      }else{
+        const Hls=(await import("hls.js")).default;
+        if(Hls.isSupported()){ h=new Hls(); h.loadSource(cur.url); h.attachMedia(video); setStatus("Playing: "+cur.name); }
+        else video.src=cur.url;
+      }
+    })();
+    return()=>{ try{p?.destroy(); h?.destroy();}catch{} }
+  },[cur]);
 
-  const filtered = channels.filter(c=> c.name.toLowerCase().includes(search.toLowerCase()))
+  const filtered=all.filter(c=>c.name.toLowerCase().includes(search.toLowerCase())||c.group.toLowerCase().includes(search.toLowerCase()));
+  const groups=[...new Set(all.map(c=>c.group))];
 
-  return (
-    <div className="min-h-screen bg-black text-white p-4">
-      <header className="flex gap-4 items-center mb-4">
-        <h1 className="text-2xl font-bold text-green-400">BUNYA TV</h1>
-        <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search channel..." className="bg-zinc-800 px-4 py-2 rounded w-full max-w-md" />
-      </header>
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <div className="lg:col-span-1 bg-zinc-900 rounded p-2 h-[80vh] overflow-y-auto">
-          <p className="text-sm text-zinc-400 mb-2">{filtered.length} channels found</p>
-          {filtered.map((c,i)=>(
-            <div key={i} onClick={()=>play(c)} className={`flex items-center gap-2 p-2 rounded hover:bg-zinc-800 cursor-pointer ${playing?.url===c.url?'bg-zinc-800 border border-green-500':''}`}>
-              <img src={c.logo} className="w-8 h-8 bg-white rounded" alt="" />
-              <div className="truncate"><p className="truncate text-sm">{c.name}</p><p className="text-xs text-zinc-500">{c.group}</p></div>
-            </div>
-          ))}
-        </div>
-        <div className="lg:col-span-2">
-          <video ref={videoRef} controls className="w-full aspect-video bg-zinc-900 rounded" />
-          {playing && <div className="mt-3"><h2 className="text-xl">{playing.name}</h2><p className="text-zinc-400">{playing.group}</p></div>}
-          {!playing && <p className="text-zinc-500 mt-10 text-center">Select a channel to start streaming</p>}
-        </div>
+  return(
+    <div className="min-h-screen bg-black text-white">
+      <div className="p-3 sticky top-0 bg-black z-10 flex gap-2">
+        <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search channel..." className="flex-1 px-3 py-2 rounded bg-zinc-900 border border-zinc-700"/>
+        <span className="text-[10px] text-zinc-400 self-center">{status}</span>
       </div>
+      <div className="w-full aspect-video bg-black"><video ref={vRef} controls autoPlay playsInline className="w-full h-full"/></div>
+      <div className="p-2 text-sm bg-zinc-900 truncate">{cur?.name} | {cur?.group}</div>
+      <div className="p-2 flex gap-2 overflow-x-auto">{groups.map(g=><button key={g} onClick={()=>setSearch(g)} className="px-3 py-1 rounded-full bg-zinc-800 text-xs">{g}</button>)}</div>
+      <div className="grid grid-cols-1 gap-1 p-2">{filtered.map(c=><button key={c.url+c.name} onClick={()=>setCur(c)} className={`p-3 rounded flex justify-between text-left ${cur?.url===c.url?"bg-white text-black":"bg-zinc-900"}`}><span className="truncate">{c.name}</span><span className="text-xs opacity-60">{c.group}</span></button>)}</div>
     </div>
   )
-}
+      }
